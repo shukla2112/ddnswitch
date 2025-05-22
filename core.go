@@ -47,7 +47,8 @@ func getHomeDir() (string, error) {
 	return home, nil
 }
 
-func getInstallDir() (string, error) {
+// Define getInstallDir as a variable of function type
+var getInstallDir = func() (string, error) {
 	home, err := getHomeDir()
 	if err != nil {
 		return "", err
@@ -69,7 +70,7 @@ var (
 	versionCacheMux  sync.RWMutex
 	versionCacheTime time.Time
 	cacheTTL         = 1 * time.Hour
-	cachePrerelease  bool  // Store whether the cache includes prereleases
+	cachePrerelease  bool // Store whether the cache includes prereleases
 )
 
 func fetchAvailableVersions() ([]Release, error) {
@@ -94,7 +95,7 @@ func fetchAvailableVersions() ([]Release, error) {
 	client := &http.Client{
 		Timeout: 60 * time.Second,
 	}
-	
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch releases: %w", err)
@@ -133,7 +134,7 @@ func fetchAvailableVersions() ([]Release, error) {
 	versionCacheMux.Lock()
 	versionCache = validReleases
 	versionCacheTime = time.Now()
-	cachePrerelease = includePrerelease  // Store the prerelease flag state
+	cachePrerelease = includePrerelease // Store the prerelease flag state
 	versionCacheMux.Unlock()
 
 	return validReleases, nil
@@ -143,10 +144,10 @@ func fetchAvailableVersions() ([]Release, error) {
 func debugCacheStatus() {
 	versionCacheMux.RLock()
 	defer versionCacheMux.RUnlock()
-	
+
 	cacheAge := time.Since(versionCacheTime)
 	cacheValid := cacheAge < cacheTTL && len(versionCache) > 0
-	
+
 	fmt.Printf("\n[DEBUG] Cache status:\n")
 	fmt.Printf("  Cache age: %v\n", cacheAge)
 	fmt.Printf("  Cache TTL: %v\n", cacheTTL)
@@ -158,10 +159,10 @@ func debugCacheStatus() {
 
 func listAvailableVersions() error {
 	fmt.Println("Fetching available DDN CLI versions...")
-	
+
 	// Uncomment this line for debugging
 	// debugCacheStatus()
-	
+
 	releases, err := fetchAvailableVersions()
 	if err != nil {
 		return err
@@ -176,21 +177,21 @@ func listAvailableVersions() error {
 		if isCurrentVersion(release.TagName) {
 			current = " (current)"
 		}
-		
+
 		prerelease := ""
 		if release.PreRelease {
 			prerelease = " [pre-release]"
 		}
-		
+
 		fmt.Printf("%2d. %s%s%s\n", i+1, release.TagName, prerelease, current)
 	}
-	
+
 	return nil
 }
 
 func listAndSelectVersion() error {
 	fmt.Println("Fetching available DDN CLI versions...")
-	
+
 	releases, err := fetchAvailableVersions()
 	if err != nil {
 		return err
@@ -207,12 +208,12 @@ func listAndSelectVersion() error {
 		if isCurrentVersion(release.TagName) {
 			current = " (current)"
 		}
-		
+
 		prerelease := ""
 		if release.PreRelease {
 			prerelease = " [pre-release]"
 		}
-		
+
 		options = append(options, fmt.Sprintf("%s%s%s", release.TagName, prerelease, current))
 	}
 
@@ -222,14 +223,14 @@ func listAndSelectVersion() error {
 		Message: "Select DDN CLI version to install:",
 		Options: options,
 	}
-	
+
 	if err := survey.AskOne(prompt, &selectedOption); err != nil {
 		return err
 	}
 
 	// Extract version from selected option
 	selectedVersion := strings.Split(selectedOption, " ")[0]
-	
+
 	return switchToVersion(selectedVersion)
 }
 
@@ -266,19 +267,19 @@ func installVersion(version string) error {
 	// Check for unsupported platforms
 	osName := runtime.GOOS
 	archName := runtime.GOARCH
-	
+
 	// ARM-based Linux systems are not supported
 	if osName == "linux" && (archName == "arm64" || archName == "arm") {
 		return fmt.Errorf("DDN CLI does not support ARM-based Linux systems")
 	}
-	
+
 	suffix := fmt.Sprintf("-%s-%s", osName, archName)
-	
+
 	// Use the same URL pattern as in download_cli.sh
 	downloadURL := fmt.Sprintf("https://graphql-engine-cdn.hasura.io/ddn/cli/v4/%s/cli-ddn%s", version, suffix)
-	
+
 	fmt.Printf("Downloading DDN CLI %s...\n", version)
-	
+
 	// Download the binary
 	installPath, err := getInstallDir()
 	if err != nil {
@@ -343,10 +344,10 @@ func downloadBinary(url, destPath string) error {
 func createSymlink(targetPath string) error {
 	// Find a directory in PATH to create symlink
 	pathDirs := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
-	
+
 	var symlinkDir string
 	homeDir, _ := getHomeDir()
-	
+
 	// Prefer user-writable directories
 	preferredDirs := []string{
 		filepath.Join(homeDir, "bin"),
@@ -368,7 +369,7 @@ func createSymlink(targetPath string) error {
 		if pathDir == "" || pathDir == "." {
 			continue
 		}
-		
+
 		// Test if directory is writable
 		testFile := filepath.Join(pathDir, ".ddnswitch_test")
 		if file, err := os.Create(testFile); err == nil {
@@ -405,7 +406,7 @@ found:
 
 	fmt.Printf("Switched to DDN CLI version %s\n", filepath.Base(filepath.Dir(targetPath)))
 	fmt.Printf("Active binary: %s\n", symlinkPath)
-	
+
 	return nil
 }
 
@@ -467,7 +468,7 @@ func uninstallVersion(version string) error {
 	}
 
 	versionDir := filepath.Join(installPath, version)
-	
+
 	if _, err := os.Stat(versionDir); os.IsNotExist(err) {
 		return fmt.Errorf("version %s is not installed", version)
 	}
@@ -490,11 +491,11 @@ type progressReader struct {
 func (pr *progressReader) Read(p []byte) (int, error) {
 	n, err := pr.reader.Read(p)
 	pr.read += int64(n)
-	
+
 	if pr.size > 0 {
 		percent := float64(pr.read) / float64(pr.size) * 100
 		fmt.Printf("\rProgress: %.1f%%", percent)
 	}
-	
+
 	return n, err
 }

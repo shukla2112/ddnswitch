@@ -9,6 +9,7 @@ import (
 )
 
 var version = "1.0.0"
+
 // Keep this declaration and make it accessible to other files in the package
 var includePrerelease bool
 
