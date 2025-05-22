@@ -4,10 +4,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+)
+
+var (
+	execCommand = exec.Command
+	// getSymlinkPath is already declared in core.go
+	// installVersion is already declared in core.go
+	// downloadBinary is already declared in core.go
 )
 
 func TestGetHomeDir(t *testing.T) {
@@ -125,7 +133,7 @@ func TestDownloadBinary(t *testing.T) {
 
 func TestIsCurrentVersionWithoutDDN(t *testing.T) {
 	// Test when DDN CLI is not installed
-	result := isCurrentVersion("v3.0.1")
+	result := isCurrentVersion("v2.28.0")
 	if result {
 		t.Fatal("Should return false when DDN CLI is not available")
 	}
@@ -215,3 +223,304 @@ func TestCopyFile(t *testing.T) {
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
+
+func TestSwitchToVersion(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+
+	// Save the original functions and restore them after the test
+	originalGetInstallDir := getInstallDir
+	originalGetSymlinkPath := getSymlinkPath
+	defer func() {
+		getInstallDir = originalGetInstallDir
+		getSymlinkPath = originalGetSymlinkPath
+	}()
+
+	// Create a new variable of function type that can be assigned
+	getInstallDir = func() (string, error) {
+		return tempDir, nil
+	}
+
+	// Create a mock symlink path in the temp directory
+	symlinkPath := filepath.Join(tempDir, "ddn")
+	getSymlinkPath = func() (string, error) {
+		return symlinkPath, nil
+	}
+
+	// Create a mock version directory and binary
+	testVersion := "v2.28.0"
+	versionDir := filepath.Join(tempDir, testVersion)
+	if err := os.MkdirAll(versionDir, 0755); err != nil {
+		t.Fatalf("Failed to create version directory: %v", err)
+	}
+
+	// Create a mock binary that returns the correct version
+	binPath := filepath.Join(versionDir, binName)
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+
+	// Create a mock binary script
+	mockBinaryContent := "#!/bin/sh\necho \"DDN CLI Version: " + testVersion + "\"\n"
+	if runtime.GOOS == "windows" {
+		mockBinaryContent = "@echo off\necho DDN CLI Version: " + testVersion
+	}
+
+	if err := os.WriteFile(binPath, []byte(mockBinaryContent), 0755); err != nil {
+		t.Fatalf("Failed to create mock binary: %v", err)
+	}
+
+	// Test switching to the version
+	if err := switchToVersion(testVersion); err != nil {
+		t.Fatalf("Failed to switch to version: %v", err)
+	}
+
+	// Verify the symlink was created
+	if _, err := os.Stat(symlinkPath); os.IsNotExist(err) {
+		t.Fatalf("Symlink was not created at %s", symlinkPath)
+	}
+
+	// Verify the symlink points to the correct binary
+	if runtime.GOOS != "windows" {
+		target, err := os.Readlink(symlinkPath)
+		if err != nil {
+			t.Fatalf("Failed to read symlink: %v", err)
+		}
+		if target != binPath {
+			t.Fatalf("Symlink points to %s, expected %s", target, binPath)
+		}
+	}
+}
+
+func TestSwitchToVersionWithIncorrectBinary(t *testing.T) {
+	// Skip on Windows as this test relies on shell scripts
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping test on Windows")
+	}
+
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+
+	// Save the original functions and restore them after the test
+	originalGetInstallDir := getInstallDir
+	originalGetSymlinkPath := getSymlinkPath
+	originalInstallVersion := installVersion
+	defer func() {
+		getInstallDir = originalGetInstallDir
+		getSymlinkPath = originalGetSymlinkPath
+		installVersion = originalInstallVersion
+	}()
+
+	// Create a new variable of function type that can be assigned
+	getInstallDir = func() (string, error) {
+		return tempDir, nil
+	}
+
+	// Create a mock symlink path in the temp directory
+	symlinkPath := filepath.Join(tempDir, "ddn")
+	getSymlinkPath = func() (string, error) {
+		return symlinkPath, nil
+	}
+
+	// Mock installVersion to create a correct binary
+	installVersionCalled := false
+	installVersion = func(version string) error {
+		installVersionCalled = true
+		versionDir := filepath.Join(tempDir, version)
+		if err := os.MkdirAll(versionDir, 0755); err != nil {
+			return err
+		}
+		binPath := filepath.Join(versionDir, binName)
+		mockBinaryContent := "#!/bin/sh\necho \"DDN CLI Version: " + version + "\"\n"
+		return os.WriteFile(binPath, []byte(mockBinaryContent), 0755)
+	}
+
+	// Create a mock version directory and binary with incorrect version
+	testVersion := "v2.28.0"
+	incorrectVersion := "v2.9.0"
+	versionDir := filepath.Join(tempDir, testVersion)
+	if err := os.MkdirAll(versionDir, 0755); err != nil {
+		t.Fatalf("Failed to create version directory: %v", err)
+	}
+
+	// Create a mock binary that returns the incorrect version
+	binPath := filepath.Join(versionDir, binName)
+	mockBinaryContent := "#!/bin/sh\necho \"DDN CLI Version: " + incorrectVersion + "\"\n"
+	if err := os.WriteFile(binPath, []byte(mockBinaryContent), 0755); err != nil {
+		t.Fatalf("Failed to create mock binary: %v", err)
+	}
+
+	// Test switching to the version
+	if err := switchToVersion(testVersion); err != nil {
+		t.Fatalf("Failed to switch to version: %v", err)
+	}
+
+	// Verify installVersion was called to reinstall the correct version
+	if !installVersionCalled {
+		t.Fatal("installVersion was not called to reinstall the correct version")
+	}
+
+	// Verify the symlink was created
+	if _, err := os.Stat(symlinkPath); os.IsNotExist(err) {
+		t.Fatalf("Symlink was not created at %s", symlinkPath)
+	}
+
+	// Verify the symlink points to the correct binary
+	target, err := os.Readlink(symlinkPath)
+	if err != nil {
+		t.Fatalf("Failed to read symlink: %v", err)
+	}
+	expectedBinPath := filepath.Join(tempDir, testVersion, binName)
+	if target != expectedBinPath {
+		t.Fatalf("Symlink points to %s, expected %s", target, expectedBinPath)
+	}
+}
+
+func TestInstallVersion(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+
+	// Save the original functions and restore them after the test
+	originalGetInstallDir := getInstallDir
+	originalDownloadBinary := downloadBinary
+	defer func() {
+		getInstallDir = originalGetInstallDir
+		downloadBinary = originalDownloadBinary
+	}()
+
+	// Create a new variable of function type that can be assigned
+	getInstallDir = func() (string, error) {
+		return tempDir, nil
+	}
+
+	// Mock downloadBinary to create a mock binary
+	downloadBinaryCalled := false
+	downloadBinary = func(url, destPath string) error {
+		downloadBinaryCalled = true
+		
+		// Create a mock binary that returns the correct version
+		testVersion := "v2.28.0"
+		mockBinaryContent := "#!/bin/sh\necho \"DDN CLI Version: " + testVersion + "\"\n"
+		if runtime.GOOS == "windows" {
+			mockBinaryContent = "@echo off\necho DDN CLI Version: " + testVersion
+		}
+		
+		// Create the directory if it doesn't exist
+		dir := filepath.Dir(destPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+		
+		return os.WriteFile(destPath, []byte(mockBinaryContent), 0755)
+	}
+
+	// Test installing a version
+	testVersion := "v2.28.0"
+	if err := installVersion(testVersion); err != nil {
+		t.Fatalf("Failed to install version: %v", err)
+	}
+
+	// Verify downloadBinary was called
+	if !downloadBinaryCalled {
+		t.Fatal("downloadBinary was not called")
+	}
+
+	// Verify the version directory was created
+	versionDir := filepath.Join(tempDir, testVersion)
+	if _, err := os.Stat(versionDir); os.IsNotExist(err) {
+		t.Fatalf("Version directory was not created at %s", versionDir)
+	}
+
+	// Verify the binary was created
+	binPath := filepath.Join(versionDir, binName)
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+	if _, err := os.Stat(binPath); os.IsNotExist(err) {
+		t.Fatalf("Binary was not created at %s", binPath)
+	}
+}
+
+func TestCreateSymlink(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir := t.TempDir()
+
+	// Save the original function and restore it after the test
+	originalGetSymlinkPath := getSymlinkPath
+	defer func() {
+		getSymlinkPath = originalGetSymlinkPath
+	}()
+
+	// Create a mock symlink path in the temp directory
+	symlinkPath := filepath.Join(tempDir, "ddn")
+	getSymlinkPath = func() (string, error) {
+		return symlinkPath, nil
+	}
+
+	// Create a mock target file
+	targetPath := filepath.Join(tempDir, "target")
+	if err := os.WriteFile(targetPath, []byte("test content"), 0755); err != nil {
+		t.Fatalf("Failed to create target file: %v", err)
+	}
+
+	// Test creating a symlink
+	if err := createSymlink(targetPath); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	// Verify the symlink was created
+	if _, err := os.Stat(symlinkPath); os.IsNotExist(err) {
+		t.Fatalf("Symlink was not created at %s", symlinkPath)
+	}
+
+	// Verify the symlink points to the correct file on Unix systems
+	if runtime.GOOS != "windows" {
+		target, err := os.Readlink(symlinkPath)
+		if err != nil {
+			t.Fatalf("Failed to read symlink: %v", err)
+		}
+		if target != targetPath {
+			t.Fatalf("Symlink points to %s, expected %s", target, targetPath)
+		}
+	} else {
+		// On Windows, verify the file was copied
+		content, err := os.ReadFile(symlinkPath)
+		if err != nil {
+			t.Fatalf("Failed to read copied file: %v", err)
+		}
+		if string(content) != "test content" {
+			t.Fatalf("Copied file has incorrect content: %s", string(content))
+		}
+	}
+
+	// Test creating a symlink when one already exists
+	newTargetPath := filepath.Join(tempDir, "new_target")
+	if err := os.WriteFile(newTargetPath, []byte("new test content"), 0755); err != nil {
+		t.Fatalf("Failed to create new target file: %v", err)
+	}
+
+	if err := createSymlink(newTargetPath); err != nil {
+		t.Fatalf("Failed to update symlink: %v", err)
+	}
+
+	// Verify the symlink points to the new file on Unix systems
+	if runtime.GOOS != "windows" {
+		target, err := os.Readlink(symlinkPath)
+		if err != nil {
+			t.Fatalf("Failed to read updated symlink: %v", err)
+		}
+		if target != newTargetPath {
+			t.Fatalf("Updated symlink points to %s, expected %s", target, newTargetPath)
+		}
+	} else {
+		// On Windows, verify the file was copied
+		content, err := os.ReadFile(symlinkPath)
+		if err != nil {
+			t.Fatalf("Failed to read updated copied file: %v", err)
+		}
+		if string(content) != "new test content" {
+			t.Fatalf("Updated copied file has incorrect content: %s", string(content))
+		}
+	}
+}
+

@@ -106,6 +106,13 @@ release:
     - `{{ .Env.DOCKER_USERNAME }}/ddnswitch:{{ .Tag }}`
     - `{{ .Env.DOCKER_USERNAME }}/ddnswitch:latest`
     
+    ## Debug Mode
+    
+    For troubleshooting, you can enable debug mode:
+    ```bash
+    ddnswitch --debug <command>
+    ```
+    
     **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ddnswitch/compare/{{ .PreviousTag }}...{{ .Tag }}
 
 # Homebrew tap

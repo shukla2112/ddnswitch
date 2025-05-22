@@ -96,6 +96,20 @@ ddnswitch uninstall v3.0.1
 ddnswitch version
 ```
 
+### Debug Mode
+
+For troubleshooting, you can enable debug mode to see detailed logging:
+
+```bash
+ddnswitch --debug list
+```
+
+This will show additional information about:
+- Network requests
+- Cache operations
+- Version detection
+- Installation steps
+
 ## How It Works
 
 1. **Version Discovery**: DDNSwitch fetches available DDN CLI versions

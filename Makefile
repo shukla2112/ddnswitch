@@ -87,6 +87,12 @@ deps:
 	go mod tidy
 	go mod download
 
+# Add a debug target for testing with debug mode
+.PHONY: debug
+debug: build
+	@echo "Running ${BINARY_NAME} in debug mode..."
+	${BUILD_DIR}/${BINARY_NAME} --debug version
+
 # Show help
 .PHONY: help
 help:
@@ -100,6 +106,7 @@ help:
 	@echo "  install-user - Install binary to ~/bin"
 	@echo "  clean        - Remove build artifacts"
 	@echo "  test         - Run tests"
+	@echo "  debug        - Run in debug mode"
 	@echo "  fmt          - Format code"
 	@echo "  vet          - Vet code"
 	@echo "  check        - Run fmt, vet, and test"

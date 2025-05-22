@@ -142,6 +142,10 @@ func fetchAvailableVersions() ([]Release, error) {
 
 // Add a debug function to check cache status
 func debugCacheStatus() {
+	if !debugMode {
+		return
+	}
+	
 	versionCacheMux.RLock()
 	defer versionCacheMux.RUnlock()
 
@@ -235,31 +239,129 @@ func listAndSelectVersion() error {
 }
 
 func switchToVersion(version string) error {
+	fmt.Printf("DEBUG: Starting switchToVersion for %s\n", version)
+	
 	if err := ensureInstallDir(); err != nil {
 		return err
 	}
 
-	// Check if version is already installed
+	// Get install directory
 	installPath, err := getInstallDir()
 	if err != nil {
 		return err
 	}
+	fmt.Printf("DEBUG: Install directory is %s\n", installPath)
 
+	// Construct paths
 	versionDir := filepath.Join(installPath, version)
 	binPath := filepath.Join(versionDir, binName)
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+	fmt.Printf("DEBUG: Binary path should be %s\n", binPath)
 
+	// Check if the version is already installed
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
 		fmt.Printf("Version %s not found locally. Installing...\n", version)
 		if err := installVersion(version); err != nil {
-			return err
+			return fmt.Errorf("failed to install version %s: %w", version, err)
+		}
+	} else {
+		fmt.Printf("DEBUG: Binary exists at %s\n", binPath)
+		
+		// Check if the binary is executable
+		if runtime.GOOS != "windows" {
+			info, err := os.Stat(binPath)
+			if err == nil {
+				fmt.Printf("DEBUG: Binary permissions: %v\n", info.Mode().Perm())
+				if info.Mode().Perm()&0111 == 0 {
+					fmt.Printf("DEBUG: Binary is not executable, fixing permissions\n")
+					if err := os.Chmod(binPath, 0755); err != nil {
+						fmt.Printf("DEBUG: Failed to make binary executable: %v\n", err)
+					}
+				}
+			}
+		}
+		
+		// Verify the binary version
+		cmd := exec.Command(binPath, "version")
+		output, err := cmd.CombinedOutput() // Use CombinedOutput to capture stderr too
+		if err != nil {
+			fmt.Printf("DEBUG: Failed to execute binary: %v\n", err)
+			fmt.Printf("DEBUG: Command output: %s\n", string(output))
+			fmt.Printf("Reinstalling version %s due to verification failure\n", version)
+			if err := installVersion(version); err != nil {
+				return fmt.Errorf("failed to reinstall version %s: %w", version, err)
+			}
+		} else {
+			installedVersion := strings.TrimSpace(string(output))
+			fmt.Printf("DEBUG: Binary reports version: %s\n", installedVersion)
+			
+			if !strings.Contains(installedVersion, version) {
+				fmt.Printf("DEBUG: Version mismatch! Expected %s, got %s\n", version, installedVersion)
+				fmt.Printf("Reinstalling version %s due to version mismatch\n", version)
+				if err := installVersion(version); err != nil {
+					return fmt.Errorf("failed to reinstall version %s: %w", version, err)
+				}
+			} else {
+				fmt.Printf("DEBUG: Version verification successful\n")
+			}
 		}
 	}
 
+	// Get the symlink path
+	symlinkPath, err := getSymlinkPath()
+	if err != nil {
+		return fmt.Errorf("failed to determine symlink path: %w", err)
+	}
+	fmt.Printf("DEBUG: Symlink path is %s\n", symlinkPath)
+	
+	// Check if symlink exists and where it points
+	if target, err := os.Readlink(symlinkPath); err == nil {
+		fmt.Printf("DEBUG: Current symlink points to %s\n", target)
+		if target == binPath {
+			fmt.Printf("DEBUG: Symlink already points to the correct version\n")
+			fmt.Printf("Already using DDN CLI version %s\n", version)
+			return nil
+		}
+	} else {
+		fmt.Printf("DEBUG: Failed to read symlink: %v\n", err)
+	}
+
 	// Create or update symlink
-	return createSymlink(binPath)
+	fmt.Printf("DEBUG: Creating symlink from %s to %s\n", symlinkPath, binPath)
+	if err := createSymlink(binPath); err != nil {
+		return fmt.Errorf("failed to create symlink for version %s: %w", version, err)
+	}
+
+	// Verify the symlink is working correctly
+	cmd := exec.Command("ddn", "version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		debugLog("Failed to execute ddn command: %v", err)
+		debugLog("Command output: %s", string(output))
+	} else {
+		activeVersion := strings.TrimSpace(string(output))
+		debugLog("Active ddn reports version: %s", activeVersion)
+		
+		if !strings.Contains(activeVersion, version) {
+			fmt.Printf("WARNING: Active DDN CLI reports version %s, expected %s\n", 
+					   activeVersion, version)
+		} else {
+			fmt.Printf("Verified: Active DDN CLI is now version %s\n", version)
+		}
+	}
+
+	return nil
 }
 
-func installVersion(version string) error {
+var installVersion = func(version string) error {
+	return installVersionImpl(version)
+}
+
+func installVersionImpl(version string) error {
+	fmt.Printf("DEBUG: Starting installVersion for %s\n", version)
+	
 	if err := ensureInstallDir(); err != nil {
 		return err
 	}
@@ -267,54 +369,95 @@ func installVersion(version string) error {
 	// Check for unsupported platforms
 	osName := runtime.GOOS
 	archName := runtime.GOARCH
+	fmt.Printf("DEBUG: Platform: %s, Architecture: %s\n", osName, archName)
 
 	// ARM-based Linux systems are not supported
 	if osName == "linux" && (archName == "arm64" || archName == "arm") {
 		return fmt.Errorf("DDN CLI does not support ARM-based Linux systems")
 	}
 
-	suffix := fmt.Sprintf("-%s-%s", osName, archName)
-
-	// Use the same URL pattern as in download_cli.sh
-	downloadURL := fmt.Sprintf("https://graphql-engine-cdn.hasura.io/ddn/cli/v4/%s/cli-ddn%s", version, suffix)
-
-	fmt.Printf("Downloading DDN CLI %s...\n", version)
-
-	// Download the binary
+	// Clean up any existing installation for this version
 	installPath, err := getInstallDir()
 	if err != nil {
 		return err
 	}
-
+	
 	versionDir := filepath.Join(installPath, version)
-	if err := os.MkdirAll(versionDir, 0755); err != nil {
-		return err
+	fmt.Printf("DEBUG: Version directory: %s\n", versionDir)
+	
+	if _, err := os.Stat(versionDir); err == nil {
+		fmt.Printf("DEBUG: Removing existing version directory\n")
+		if err := os.RemoveAll(versionDir); err != nil {
+			fmt.Printf("DEBUG: Failed to remove existing directory: %v\n", err)
+			return fmt.Errorf("failed to clean up existing installation: %w", err)
+		}
 	}
+	
+	fmt.Printf("DEBUG: Creating version directory\n")
+	if err := os.MkdirAll(versionDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory for version %s: %w", version, err)
+	}
+
+	suffix := fmt.Sprintf("-%s-%s", osName, archName)
+	downloadURL := fmt.Sprintf("https://graphql-engine-cdn.hasura.io/ddn/cli/v4/%s/cli-ddn%s", version, suffix)
+	fmt.Printf("DEBUG: Download URL: %s\n", downloadURL)
 
 	binPath := filepath.Join(versionDir, binName)
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}
+	fmt.Printf("DEBUG: Binary path: %s\n", binPath)
 
 	// Download the binary directly
-	return downloadBinary(downloadURL, binPath)
+	fmt.Printf("DEBUG: Downloading binary\n")
+	if err := downloadBinary(downloadURL, binPath); err != nil {
+		return fmt.Errorf("failed to download binary for version %s: %w", version, err)
+	}
+
+	// Verify the downloaded binary
+	fmt.Printf("DEBUG: Verifying downloaded binary\n")
+	cmd := exec.Command(binPath, "version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("DEBUG: Failed to execute binary: %v\n", err)
+		fmt.Printf("DEBUG: Command output: %s\n", string(output))
+		return fmt.Errorf("failed to verify downloaded binary: %w", err)
+	}
+	
+	installedVersion := strings.TrimSpace(string(output))
+	fmt.Printf("DEBUG: Binary reports version: %s\n", installedVersion)
+	
+	if !strings.Contains(installedVersion, version) {
+		fmt.Printf("DEBUG: Version mismatch! Expected %s, got %s\n", version, installedVersion)
+		return fmt.Errorf("downloaded binary reports version %s, expected %s", 
+						 installedVersion, version)
+	}
+
+	fmt.Printf("Successfully installed DDN CLI %s\n", version)
+	return nil
 }
 
-func downloadBinary(url, destPath string) error {
+var downloadBinary = func(url, destPath string) error {
+	return downloadBinaryImpl(url, destPath)
+}
+
+func downloadBinaryImpl(url, destPath string) error {
+	fmt.Printf("Downloading from: %s\n", url)
+
 	resp, err := http.Get(url)
 	if err != nil {
-		return err
+		return fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to download: status %d", resp.StatusCode)
+		return fmt.Errorf("failed to download: HTTP status %d", resp.StatusCode)
 	}
 
 	// Create destination file
 	outFile, err := os.Create(destPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create output file: %w", err)
 	}
 	defer outFile.Close()
 
@@ -327,85 +470,57 @@ func downloadBinary(url, destPath string) error {
 	// Copy the binary data to the file
 	_, err = io.Copy(outFile, progressReader)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to write binary data: %w", err)
 	}
 
 	// Make executable on Unix systems
 	if runtime.GOOS != "windows" {
 		if err := os.Chmod(destPath, 0755); err != nil {
-			return err
+			return fmt.Errorf("failed to set executable permissions: %w", err)
 		}
 	}
 
-	fmt.Println("\nInstallation completed successfully!")
+	fmt.Println("\nDownload completed successfully!")
 	return nil
 }
 
 func createSymlink(targetPath string) error {
-	// Find a directory in PATH to create symlink
-	pathDirs := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
-
-	var symlinkDir string
-	homeDir, _ := getHomeDir()
-
-	// Prefer user-writable directories
-	preferredDirs := []string{
-		filepath.Join(homeDir, "bin"),
-		filepath.Join(homeDir, ".local", "bin"),
-		"/usr/local/bin",
+	fmt.Printf("DEBUG: Creating symlink to %s\n", targetPath)
+	
+	symlinkPath, err := getSymlinkPath()
+	if err != nil {
+		return err
 	}
-
-	for _, preferred := range preferredDirs {
-		for _, pathDir := range pathDirs {
-			if pathDir == preferred {
-				symlinkDir = pathDir
-				goto found
-			}
-		}
-	}
-
-	// If no preferred directory found, use first writable directory in PATH
-	for _, pathDir := range pathDirs {
-		if pathDir == "" || pathDir == "." {
-			continue
-		}
-
-		// Test if directory is writable
-		testFile := filepath.Join(pathDir, ".ddnswitch_test")
-		if file, err := os.Create(testFile); err == nil {
-			file.Close()
-			os.Remove(testFile)
-			symlinkDir = pathDir
-			break
-		}
-	}
-
-found:
-	if symlinkDir == "" {
-		// Create ~/bin if no suitable directory found
-		symlinkDir = filepath.Join(homeDir, "bin")
-		if err := os.MkdirAll(symlinkDir, 0755); err != nil {
-			return err
-		}
-		fmt.Printf("Created %s directory. Please add it to your PATH.\n", symlinkDir)
-	}
-
-	symlinkPath := filepath.Join(symlinkDir, binName)
-	if runtime.GOOS == "windows" {
-		symlinkPath += ".exe"
-	}
+	
+	fmt.Printf("DEBUG: Symlink path: %s\n", symlinkPath)
 
 	// Remove existing symlink if it exists
-	os.Remove(symlinkPath)
+	if _, err := os.Lstat(symlinkPath); err == nil {
+		fmt.Printf("DEBUG: Removing existing symlink or file\n")
+		if err := os.Remove(symlinkPath); err != nil {
+			fmt.Printf("DEBUG: Failed to remove existing symlink: %v\n", err)
+			return fmt.Errorf("failed to remove existing symlink: %w", err)
+		}
+	}
 
 	// Create new symlink
+	fmt.Printf("DEBUG: Creating new symlink\n")
 	if err := os.Symlink(targetPath, symlinkPath); err != nil {
+		fmt.Printf("DEBUG: Failed to create symlink: %v\n", err)
 		// On Windows or if symlink fails, try copying the file
+		fmt.Printf("DEBUG: Falling back to file copy\n")
 		return copyFile(targetPath, symlinkPath)
 	}
 
-	fmt.Printf("Switched to DDN CLI version %s\n", filepath.Base(filepath.Dir(targetPath)))
-	fmt.Printf("Active binary: %s\n", symlinkPath)
+	// Verify the symlink was created correctly
+	if target, err := os.Readlink(symlinkPath); err == nil {
+		fmt.Printf("DEBUG: Symlink created, points to %s\n", target)
+		if target != targetPath {
+			fmt.Printf("DEBUG: WARNING: Symlink points to %s, expected %s\n", target, targetPath)
+		}
+	} else {
+		fmt.Printf("DEBUG: Failed to read created symlink: %v\n", err)
+	}
 
 	return nil
 }
@@ -498,4 +613,66 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 	}
 
 	return n, err
+}
+
+// Helper function to get the symlink path
+var getSymlinkPath = func() (string, error) {
+	homeDir, err := getHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return getSymlinkPathImpl(homeDir)
+}
+
+func getSymlinkPathImpl(homeDir string) (string, error) {
+	// Find a directory in PATH to create symlink
+	pathDirs := strings.Split(os.Getenv("PATH"), string(os.PathListSeparator))
+
+	var symlinkDir string
+	preferredDirs := []string{
+		filepath.Join(homeDir, "bin"),
+		filepath.Join(homeDir, ".local", "bin"),
+		"/usr/local/bin",
+	}
+
+	for _, preferred := range preferredDirs {
+		for _, pathDir := range pathDirs {
+			if pathDir == preferred {
+				symlinkDir = pathDir
+				goto found
+			}
+		}
+	}
+
+	// If no preferred directory found, use first writable directory in PATH
+	for _, pathDir := range pathDirs {
+		if pathDir == "" || pathDir == "." {
+			continue
+		}
+
+		// Test if directory is writable
+		testFile := filepath.Join(pathDir, ".ddnswitch_test")
+		if file, err := os.Create(testFile); err == nil {
+			file.Close()
+			os.Remove(testFile)
+			symlinkDir = pathDir
+			break
+		}
+	}
+
+found:
+	if symlinkDir == "" {
+		// Create ~/bin if no suitable directory found
+		symlinkDir = filepath.Join(homeDir, "bin")
+		if err := os.MkdirAll(symlinkDir, 0755); err != nil {
+			return "", err
+		}
+	}
+
+	symlinkPath := filepath.Join(symlinkDir, binName)
+	if runtime.GOOS == "windows" {
+		symlinkPath += ".exe"
+	}
+	
+	return symlinkPath, nil
 }

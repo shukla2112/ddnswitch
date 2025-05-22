@@ -13,12 +13,28 @@ var version = "1.0.0"
 // Keep this declaration and make it accessible to other files in the package
 var includePrerelease bool
 
+var (
+	debugMode bool
+)
+
+func init() {
+	// Add debug flag
+	flag.BoolVar(&debugMode, "debug", false, "Enable debug logging")
+}
+
+func debugLog(format string, args ...interface{}) {
+	if debugMode {
+		fmt.Printf("[DEBUG] "+format+"\n", args...)
+	}
+}
+
 func main() {
 	var rootCmd = &cobra.Command{
-		Use:   "ddnswitch",
+		Use:   "ddnswitch [version]",
 		Short: "Switch between different versions of DDN CLI",
 		Long: `DDN CLI Switcher allows you to easily switch between different versions of the DDN CLI.
 Similar to tfswitch for Terraform, this tool helps manage multiple DDN CLI versions.`,
+		Args: cobra.ArbitraryArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) == 0 {
 				// Interactive mode - show available versions
@@ -28,6 +44,7 @@ Similar to tfswitch for Terraform, this tool helps manage multiple DDN CLI versi
 			} else {
 				// Direct version specification
 				targetVersion := args[0]
+				fmt.Printf("Switching to DDN CLI version %s...\n", targetVersion)
 				if err := switchToVersion(targetVersion); err != nil {
 					log.Fatalf("Error switching to version %s: %v", targetVersion, err)
 				}

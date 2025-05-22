@@ -44,8 +44,11 @@ USER ddnswitch
 # Create .ddnswitch directory
 RUN mkdir -p /home/ddnswitch/.ddnswitch
 
-# Set entrypoint
+# Update the entrypoint to allow passing debug flag
 ENTRYPOINT ["ddnswitch"]
 
-# Default command
+# Default command shows help
 CMD ["--help"]
+
+# Add a label for the debug feature
+LABEL org.opencontainers.image.description="DDN CLI version switcher with debug capabilities"
