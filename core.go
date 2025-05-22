@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/Masterminds/semver/v3"
@@ -60,8 +63,38 @@ func ensureInstallDir() error {
 	return os.MkdirAll(installPath, 0755)
 }
 
+// Add a cache for versions to avoid repeated network calls
+var (
+	versionCache     []Release
+	versionCacheMux  sync.RWMutex
+	versionCacheTime time.Time
+	cacheTTL         = 1 * time.Hour
+)
+
 func fetchAvailableVersions() ([]Release, error) {
-	resp, err := http.Get(releasesURL)
+	// Check cache first
+	versionCacheMux.RLock()
+	if time.Since(versionCacheTime) < cacheTTL && len(versionCache) > 0 {
+		cachedVersions := versionCache
+		versionCacheMux.RUnlock()
+		return cachedVersions, nil
+	}
+	versionCacheMux.RUnlock()
+
+	// Set a timeout for the HTTP request
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", releasesURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout: 60 * time.Second,
+	}
+	
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch releases: %w", err)
 	}
@@ -94,6 +127,12 @@ func fetchAvailableVersions() ([]Release, error) {
 		}
 		return vi.GreaterThan(vj)
 	})
+
+	// Update cache
+	versionCacheMux.Lock()
+	versionCache = validReleases
+	versionCacheTime = time.Now()
+	versionCacheMux.Unlock()
 
 	return validReleases, nil
 }
