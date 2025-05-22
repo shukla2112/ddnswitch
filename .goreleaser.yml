@@ -1,0 +1,219 @@
+# GoReleaser configuration for DDNSwitch
+project_name: ddnswitch
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    # Skip Windows ARM64 for now
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    binary: ddnswitch
+
+archives:
+  - format: tar.gz
+    # Use zip for Windows archives
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^build:'
+      - '^style:'
+      - '^refactor:'
+      - '^chore:'
+      - 'merge conflict'
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+  groups:
+    - title: 'New Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 'Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 'Performance Improvements'
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: 'Others'
+      order: 999
+
+release:
+  github:
+    owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+    name: "ddnswitch"
+  name_template: "v{{ .Version }}"
+  header: |
+    ## DDNSwitch v{{ .Version }}
+    
+    Welcome to this new release of DDNSwitch! 🎉
+    
+    ### Installation
+    
+    #### Homebrew (macOS/Linux)
+    ```bash
+    brew install {{ .Env.GITHUB_REPOSITORY_OWNER }}/tap/ddnswitch
+    ```
+    
+    #### Download Binary
+    Download the appropriate binary for your platform from the assets below.
+    
+    #### Go Install
+    ```bash
+    go install github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ddnswitch@{{ .Tag }}
+    ```
+    
+    ### What's Changed
+  footer: |
+    ## Docker Images
+    
+    Docker images are available at:
+    - `{{ .Env.DOCKER_USERNAME }}/ddnswitch:{{ .Tag }}`
+    - `{{ .Env.DOCKER_USERNAME }}/ddnswitch:latest`
+    
+    **Full Changelog**: https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ddnswitch/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+# Homebrew tap
+brews:
+  - name: ddnswitch
+    repository:
+      owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ddnswitch"
+    description: "Switch between different versions of the DDN CLI"
+    license: "MIT"
+    test: |
+      system "#{bin}/ddnswitch version"
+    dependencies:
+      - name: go
+        type: build
+    install: |
+      bin.install "ddnswitch"
+
+# Snapcraft
+snapcrafts:
+  - name: ddnswitch
+    publish: true
+    summary: DDN CLI version switcher
+    description: |
+      DDNSwitch allows you to easily switch between different versions of the DDN CLI.
+      Similar to tfswitch for Terraform, this tool helps manage multiple DDN CLI versions.
+    grade: stable
+    confinement: strict
+    license: MIT
+    base: core20
+    apps:
+      ddnswitch:
+        command: ddnswitch
+        plugs: ["home", "network"]
+
+# Scoop (Windows package manager)
+scoops:
+  - repository:
+      owner: "{{ .Env.GITHUB_REPOSITORY_OWNER }}"
+      name: scoop-bucket
+      branch: main
+      token: "{{ .Env.SCOOP_TAP_TOKEN }}"
+    directory: bucket
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ddnswitch"
+    description: "Switch between different versions of the DDN CLI"
+    license: MIT
+
+# AUR (Arch Linux)
+aurs:
+  - name: ddnswitch-bin
+    homepage: "https://github.com/{{ .Env.GITHUB_REPOSITORY_OWNER }}/ddnswitch"
+    description: "Switch between different versions of the DDN CLI"
+    maintainers:
+      - 'Your Name <your.email@example.com>'
+    license: MIT
+    private_key: '{{ .Env.AUR_KEY }}'
+    git_url: 'ssh://aur@aur.archlinux.org/ddnswitch-bin.git'
+    depends:
+      - glibc
+    package: |-
+      # bin
+      install -Dm755 "./ddnswitch" "${pkgdir}/usr/bin/ddnswitch"
+      
+      # license
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/ddnswitch/LICENSE"
+
+# Docker images
+dockers:
+  - image_templates:
+      - "{{ .Env.DOCKER_USERNAME }}/ddnswitch:{{ .Tag }}-amd64"
+      - "{{ .Env.DOCKER_USERNAME }}/ddnswitch:latest-amd64"
+    dockerfile: Dockerfile.release
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--platform=linux/amd64"
+  
+  - image_templates:
+      - "{{ .Env.DOCKER_USERNAME }}/ddnswitch:{{ .Tag }}-arm64"
+      - "{{ .Env.DOCKER_USERNAME }}/ddnswitch:latest-arm64"
+    dockerfile: Dockerfile.release
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.name={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--platform=linux/arm64"
+    goarch: arm64
+
+docker_manifests:
+  - name_template: "{{ .Env.DOCKER_USERNAME }}/ddnswitch:{{ .Tag }}"
+    image_templates:
+      - "{{ .Env.DOCKER_USERNAME }}/ddnswitch:{{ .Tag }}-amd64"
+      - "{{ .Env.DOCKER_USERNAME }}/ddnswitch:{{ .Tag }}-arm64"
+  
+  - name_template: "{{ .Env.DOCKER_USERNAME }}/ddnswitch:latest"
+    image_templates:
+      - "{{ .Env.DOCKER_USERNAME }}/ddnswitch:latest-amd64"
+      - "{{ .Env.DOCKER_USERNAME }}/ddnswitch:latest-arm64"
