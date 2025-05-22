@@ -9,6 +9,8 @@ import (
 )
 
 var version = "1.0.0"
+// Keep this declaration and make it accessible to other files in the package
+var includePrerelease bool
 
 func main() {
 	var rootCmd = &cobra.Command{
@@ -31,6 +33,9 @@ Similar to tfswitch for Terraform, this tool helps manage multiple DDN CLI versi
 			}
 		},
 	}
+
+	// Add the prerelease flag to the root command
+	rootCmd.PersistentFlags().BoolVar(&includePrerelease, "pre", false, "Include pre-release versions")
 
 	var listCmd = &cobra.Command{
 		Use:   "list",
@@ -84,10 +89,11 @@ Similar to tfswitch for Terraform, this tool helps manage multiple DDN CLI versi
 		},
 	}
 
+	// Add subcommands
 	rootCmd.AddCommand(listCmd, installCmd, currentCmd, versionCmd, uninstallCmd)
 
+	// Execute the command
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
 		os.Exit(1)
 	}
 }

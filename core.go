@@ -69,12 +69,13 @@ var (
 	versionCacheMux  sync.RWMutex
 	versionCacheTime time.Time
 	cacheTTL         = 1 * time.Hour
+	cachePrerelease  bool  // Store whether the cache includes prereleases
 )
 
 func fetchAvailableVersions() ([]Release, error) {
 	// Check cache first
 	versionCacheMux.RLock()
-	if time.Since(versionCacheTime) < cacheTTL && len(versionCache) > 0 {
+	if time.Since(versionCacheTime) < cacheTTL && len(versionCache) > 0 && cachePrerelease == includePrerelease {
 		cachedVersions := versionCache
 		versionCacheMux.RUnlock()
 		return cachedVersions, nil
@@ -109,10 +110,10 @@ func fetchAvailableVersions() ([]Release, error) {
 		return nil, fmt.Errorf("failed to decode releases: %w", err)
 	}
 
-	// Filter out drafts and pre-releases, then sort by version
+	// Filter out drafts and pre-releases (if not included), then sort by version
 	var validReleases []Release
 	for _, release := range releases {
-		if !release.Draft && !release.PreRelease {
+		if !release.Draft && (includePrerelease || !release.PreRelease) {
 			validReleases = append(validReleases, release)
 		}
 	}
@@ -132,18 +133,42 @@ func fetchAvailableVersions() ([]Release, error) {
 	versionCacheMux.Lock()
 	versionCache = validReleases
 	versionCacheTime = time.Now()
+	cachePrerelease = includePrerelease  // Store the prerelease flag state
 	versionCacheMux.Unlock()
 
 	return validReleases, nil
 }
 
+// Add a debug function to check cache status
+func debugCacheStatus() {
+	versionCacheMux.RLock()
+	defer versionCacheMux.RUnlock()
+	
+	cacheAge := time.Since(versionCacheTime)
+	cacheValid := cacheAge < cacheTTL && len(versionCache) > 0
+	
+	fmt.Printf("\n[DEBUG] Cache status:\n")
+	fmt.Printf("  Cache age: %v\n", cacheAge)
+	fmt.Printf("  Cache TTL: %v\n", cacheTTL)
+	fmt.Printf("  Cache size: %d items\n", len(versionCache))
+	fmt.Printf("  Cache includes prereleases: %v\n", cachePrerelease)
+	fmt.Printf("  Current prerelease flag: %v\n", includePrerelease)
+	fmt.Printf("  Cache valid: %v\n", cacheValid)
+}
+
 func listAvailableVersions() error {
 	fmt.Println("Fetching available DDN CLI versions...")
+	
+	// Uncomment this line for debugging
+	// debugCacheStatus()
 	
 	releases, err := fetchAvailableVersions()
 	if err != nil {
 		return err
 	}
+
+	// Uncomment this line for debugging
+	// debugCacheStatus()
 
 	fmt.Println("\nAvailable DDN CLI versions:")
 	for i, release := range releases {
@@ -151,7 +176,13 @@ func listAvailableVersions() error {
 		if isCurrentVersion(release.TagName) {
 			current = " (current)"
 		}
-		fmt.Printf("%2d. %s%s\n", i+1, release.TagName, current)
+		
+		prerelease := ""
+		if release.PreRelease {
+			prerelease = " [pre-release]"
+		}
+		
+		fmt.Printf("%2d. %s%s%s\n", i+1, release.TagName, prerelease, current)
 	}
 	
 	return nil
@@ -176,7 +207,13 @@ func listAndSelectVersion() error {
 		if isCurrentVersion(release.TagName) {
 			current = " (current)"
 		}
-		options = append(options, fmt.Sprintf("%s%s", release.TagName, current))
+		
+		prerelease := ""
+		if release.PreRelease {
+			prerelease = " [pre-release]"
+		}
+		
+		options = append(options, fmt.Sprintf("%s%s%s", release.TagName, prerelease, current))
 	}
 
 	// Interactive selection

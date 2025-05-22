@@ -40,6 +40,12 @@ Simply run `ddnswitch` without arguments to see an interactive menu:
 ddnswitch
 ```
 
+To include pre-release versions:
+
+```bash
+ddnswitch --pre
+```
+
 This will:
 1. Fetch available DDN CLI versions
 2. Show an interactive selection menu
@@ -58,6 +64,12 @@ ddnswitch v3.0.1
 
 ```bash
 ddnswitch list
+```
+
+To include pre-release versions:
+
+```bash
+ddnswitch list --pre
 ```
 
 ### Install a Specific Version
