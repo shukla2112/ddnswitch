@@ -98,7 +98,7 @@ jobs:
         go build -ldflags "-X main.version=${VERSION}" -o "${BINARY_NAME}" .
     
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ddnswitch-${{ matrix.goos }}-${{ matrix.goarch }}
         path: ddnswitch-*
