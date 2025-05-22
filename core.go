@@ -239,7 +239,7 @@ func listAndSelectVersion() error {
 }
 
 func switchToVersion(version string) error {
-	fmt.Printf("DEBUG: Starting switchToVersion for %s\n", version)
+	debugLog("Starting switchToVersion for %s", version)
 
 	if err := ensureInstallDir(); err != nil {
 		return err
@@ -250,7 +250,7 @@ func switchToVersion(version string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("DEBUG: Install directory is %s\n", installPath)
+	debugLog("Install directory is %s", installPath)
 
 	// Construct paths
 	versionDir := filepath.Join(installPath, version)
@@ -258,7 +258,7 @@ func switchToVersion(version string) error {
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}
-	fmt.Printf("DEBUG: Binary path should be %s\n", binPath)
+	debugLog("Binary path should be %s", binPath)
 
 	// Check if the version is already installed
 	if _, err := os.Stat(binPath); os.IsNotExist(err) {
@@ -267,17 +267,17 @@ func switchToVersion(version string) error {
 			return fmt.Errorf("failed to install version %s: %w", version, err)
 		}
 	} else {
-		fmt.Printf("DEBUG: Binary exists at %s\n", binPath)
+		debugLog("Binary exists at %s", binPath)
 
 		// Check if the binary is executable
 		if runtime.GOOS != "windows" {
 			info, err := os.Stat(binPath)
 			if err == nil {
-				fmt.Printf("DEBUG: Binary permissions: %v\n", info.Mode().Perm())
+				debugLog("Binary permissions: %v", info.Mode().Perm())
 				if info.Mode().Perm()&0111 == 0 {
-					fmt.Printf("DEBUG: Binary is not executable, fixing permissions\n")
+					debugLog("Binary is not executable, fixing permissions")
 					if err := os.Chmod(binPath, 0755); err != nil {
-						fmt.Printf("DEBUG: Failed to make binary executable: %v\n", err)
+						debugLog("Failed to make binary executable: %v", err)
 					}
 				}
 			}
@@ -287,24 +287,24 @@ func switchToVersion(version string) error {
 		cmd := exec.Command(binPath, "version")
 		output, err := cmd.CombinedOutput() // Use CombinedOutput to capture stderr too
 		if err != nil {
-			fmt.Printf("DEBUG: Failed to execute binary: %v\n", err)
-			fmt.Printf("DEBUG: Command output: %s\n", string(output))
+			debugLog("Failed to execute binary: %v", err)
+			debugLog("Command output: %s", string(output))
 			fmt.Printf("Reinstalling version %s due to verification failure\n", version)
 			if err := installVersion(version); err != nil {
 				return fmt.Errorf("failed to reinstall version %s: %w", version, err)
 			}
 		} else {
 			installedVersion := strings.TrimSpace(string(output))
-			fmt.Printf("DEBUG: Binary reports version: %s\n", installedVersion)
+			debugLog("Binary reports version: %s", installedVersion)
 
 			if !strings.Contains(installedVersion, version) {
-				fmt.Printf("DEBUG: Version mismatch! Expected %s, got %s\n", version, installedVersion)
+				debugLog("Version mismatch! Expected %s, got %s", version, installedVersion)
 				fmt.Printf("Reinstalling version %s due to version mismatch\n", version)
 				if err := installVersion(version); err != nil {
 					return fmt.Errorf("failed to reinstall version %s: %w", version, err)
 				}
 			} else {
-				fmt.Printf("DEBUG: Version verification successful\n")
+				debugLog("Version verification successful")
 			}
 		}
 	}
@@ -314,22 +314,22 @@ func switchToVersion(version string) error {
 	if err != nil {
 		return fmt.Errorf("failed to determine symlink path: %w", err)
 	}
-	fmt.Printf("DEBUG: Symlink path is %s\n", symlinkPath)
+	debugLog("Symlink path is %s", symlinkPath)
 
 	// Check if symlink exists and where it points
 	if target, err := os.Readlink(symlinkPath); err == nil {
-		fmt.Printf("DEBUG: Current symlink points to %s\n", target)
+		debugLog("Current symlink points to %s", target)
 		if target == binPath {
-			fmt.Printf("DEBUG: Symlink already points to the correct version\n")
+			debugLog("Symlink already points to the correct version")
 			fmt.Printf("Already using DDN CLI version %s\n", version)
 			return nil
 		}
 	} else {
-		fmt.Printf("DEBUG: Failed to read symlink: %v\n", err)
+		debugLog("Failed to read symlink: %v", err)
 	}
 
 	// Create or update symlink
-	fmt.Printf("DEBUG: Creating symlink from %s to %s\n", symlinkPath, binPath)
+	debugLog("Creating symlink from %s to %s", symlinkPath, binPath)
 	if err := createSymlink(binPath); err != nil {
 		return fmt.Errorf("failed to create symlink for version %s: %w", version, err)
 	}
@@ -360,7 +360,7 @@ var installVersion = func(version string) error {
 }
 
 func installVersionImpl(version string) error {
-	fmt.Printf("DEBUG: Starting installVersion for %s\n", version)
+	debugLog("Starting installVersion for %s", version)
 
 	if err := ensureInstallDir(); err != nil {
 		return err
@@ -369,7 +369,7 @@ func installVersionImpl(version string) error {
 	// Check for unsupported platforms
 	osName := runtime.GOOS
 	archName := runtime.GOARCH
-	fmt.Printf("DEBUG: Platform: %s, Architecture: %s\n", osName, archName)
+	debugLog("Platform: %s, Architecture: %s", osName, archName)
 
 	// ARM-based Linux systems are not supported
 	if osName == "linux" && (archName == "arm64" || archName == "arm") {
@@ -383,52 +383,52 @@ func installVersionImpl(version string) error {
 	}
 
 	versionDir := filepath.Join(installPath, version)
-	fmt.Printf("DEBUG: Version directory: %s\n", versionDir)
+	debugLog("Version directory: %s", versionDir)
 
 	if _, err := os.Stat(versionDir); err == nil {
-		fmt.Printf("DEBUG: Removing existing version directory\n")
+		debugLog("Removing existing version directory")
 		if err := os.RemoveAll(versionDir); err != nil {
-			fmt.Printf("DEBUG: Failed to remove existing directory: %v\n", err)
+			debugLog("Failed to remove existing directory: %v", err)
 			return fmt.Errorf("failed to clean up existing installation: %w", err)
 		}
 	}
 
-	fmt.Printf("DEBUG: Creating version directory\n")
+	debugLog("Creating version directory")
 	if err := os.MkdirAll(versionDir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory for version %s: %w", version, err)
 	}
 
 	suffix := fmt.Sprintf("-%s-%s", osName, archName)
 	downloadURL := fmt.Sprintf("https://graphql-engine-cdn.hasura.io/ddn/cli/v4/%s/cli-ddn%s", version, suffix)
-	fmt.Printf("DEBUG: Download URL: %s\n", downloadURL)
+	debugLog("Download URL: %s", downloadURL)
 
 	binPath := filepath.Join(versionDir, binName)
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}
-	fmt.Printf("DEBUG: Binary path: %s\n", binPath)
+	debugLog("Binary path: %s", binPath)
 
 	// Download the binary directly
-	fmt.Printf("DEBUG: Downloading binary\n")
+	debugLog("Downloading binary")
 	if err := downloadBinary(downloadURL, binPath); err != nil {
 		return fmt.Errorf("failed to download binary for version %s: %w", version, err)
 	}
 
 	// Verify the downloaded binary
-	fmt.Printf("DEBUG: Verifying downloaded binary\n")
+	debugLog("Verifying downloaded binary")
 	cmd := exec.Command(binPath, "version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		fmt.Printf("DEBUG: Failed to execute binary: %v\n", err)
-		fmt.Printf("DEBUG: Command output: %s\n", string(output))
+		debugLog("Failed to execute binary: %v", err)
+		debugLog("Command output: %s", string(output))
 		return fmt.Errorf("failed to verify downloaded binary: %w", err)
 	}
 
 	installedVersion := strings.TrimSpace(string(output))
-	fmt.Printf("DEBUG: Binary reports version: %s\n", installedVersion)
+	debugLog("Binary reports version: %s", installedVersion)
 
 	if !strings.Contains(installedVersion, version) {
-		fmt.Printf("DEBUG: Version mismatch! Expected %s, got %s\n", version, installedVersion)
+		debugLog("Version mismatch! Expected %s, got %s", version, installedVersion)
 		return fmt.Errorf("downloaded binary reports version %s, expected %s",
 			installedVersion, version)
 	}
@@ -485,41 +485,41 @@ func downloadBinaryImpl(url, destPath string) error {
 }
 
 func createSymlink(targetPath string) error {
-	fmt.Printf("DEBUG: Creating symlink to %s\n", targetPath)
+	debugLog("Creating symlink to %s", targetPath)
 
 	symlinkPath, err := getSymlinkPath()
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("DEBUG: Symlink path: %s\n", symlinkPath)
+	debugLog("Symlink path: %s", symlinkPath)
 
 	// Remove existing symlink if it exists
 	if _, err := os.Lstat(symlinkPath); err == nil {
-		fmt.Printf("DEBUG: Removing existing symlink or file\n")
+		debugLog("Removing existing symlink or file")
 		if err := os.Remove(symlinkPath); err != nil {
-			fmt.Printf("DEBUG: Failed to remove existing symlink: %v\n", err)
+			debugLog("Failed to remove existing symlink: %v", err)
 			return fmt.Errorf("failed to remove existing symlink: %w", err)
 		}
 	}
 
 	// Create new symlink
-	fmt.Printf("DEBUG: Creating new symlink\n")
+	debugLog("Creating new symlink")
 	if err := os.Symlink(targetPath, symlinkPath); err != nil {
-		fmt.Printf("DEBUG: Failed to create symlink: %v\n", err)
+		debugLog("Failed to create symlink: %v", err)
 		// On Windows or if symlink fails, try copying the file
-		fmt.Printf("DEBUG: Falling back to file copy\n")
+		debugLog("Falling back to file copy")
 		return copyFile(targetPath, symlinkPath)
 	}
 
 	// Verify the symlink was created correctly
 	if target, err := os.Readlink(symlinkPath); err == nil {
-		fmt.Printf("DEBUG: Symlink created, points to %s\n", target)
+		debugLog("Symlink created, points to %s", target)
 		if target != targetPath {
-			fmt.Printf("DEBUG: WARNING: Symlink points to %s, expected %s\n", target, targetPath)
+			debugLog("WARNING: Symlink points to %s, expected %s", target, targetPath)
 		}
 	} else {
-		fmt.Printf("DEBUG: Failed to read created symlink: %v\n", err)
+		debugLog("Failed to read created symlink: %v", err)
 	}
 
 	return nil
@@ -639,6 +639,7 @@ func getSymlinkPathImpl(homeDir string) (string, error) {
 		for _, pathDir := range pathDirs {
 			if pathDir == preferred {
 				symlinkDir = pathDir
+				debugLog("Found preferred directory in PATH: %s", preferred)
 				goto found
 			}
 		}
@@ -656,6 +657,7 @@ func getSymlinkPathImpl(homeDir string) (string, error) {
 			file.Close()
 			os.Remove(testFile)
 			symlinkDir = pathDir
+			debugLog("Found writable directory in PATH: %s", pathDir)
 			break
 		}
 	}
@@ -664,6 +666,7 @@ found:
 	if symlinkDir == "" {
 		// Create ~/bin if no suitable directory found
 		symlinkDir = filepath.Join(homeDir, "bin")
+		debugLog("No suitable directory found in PATH, using %s", symlinkDir)
 		if err := os.MkdirAll(symlinkDir, 0755); err != nil {
 			return "", err
 		}
