@@ -145,7 +145,7 @@ func debugCacheStatus() {
 	if !debugMode {
 		return
 	}
-	
+
 	versionCacheMux.RLock()
 	defer versionCacheMux.RUnlock()
 
@@ -240,7 +240,7 @@ func listAndSelectVersion() error {
 
 func switchToVersion(version string) error {
 	fmt.Printf("DEBUG: Starting switchToVersion for %s\n", version)
-	
+
 	if err := ensureInstallDir(); err != nil {
 		return err
 	}
@@ -268,7 +268,7 @@ func switchToVersion(version string) error {
 		}
 	} else {
 		fmt.Printf("DEBUG: Binary exists at %s\n", binPath)
-		
+
 		// Check if the binary is executable
 		if runtime.GOOS != "windows" {
 			info, err := os.Stat(binPath)
@@ -282,7 +282,7 @@ func switchToVersion(version string) error {
 				}
 			}
 		}
-		
+
 		// Verify the binary version
 		cmd := exec.Command(binPath, "version")
 		output, err := cmd.CombinedOutput() // Use CombinedOutput to capture stderr too
@@ -296,7 +296,7 @@ func switchToVersion(version string) error {
 		} else {
 			installedVersion := strings.TrimSpace(string(output))
 			fmt.Printf("DEBUG: Binary reports version: %s\n", installedVersion)
-			
+
 			if !strings.Contains(installedVersion, version) {
 				fmt.Printf("DEBUG: Version mismatch! Expected %s, got %s\n", version, installedVersion)
 				fmt.Printf("Reinstalling version %s due to version mismatch\n", version)
@@ -315,7 +315,7 @@ func switchToVersion(version string) error {
 		return fmt.Errorf("failed to determine symlink path: %w", err)
 	}
 	fmt.Printf("DEBUG: Symlink path is %s\n", symlinkPath)
-	
+
 	// Check if symlink exists and where it points
 	if target, err := os.Readlink(symlinkPath); err == nil {
 		fmt.Printf("DEBUG: Current symlink points to %s\n", target)
@@ -343,10 +343,10 @@ func switchToVersion(version string) error {
 	} else {
 		activeVersion := strings.TrimSpace(string(output))
 		debugLog("Active ddn reports version: %s", activeVersion)
-		
+
 		if !strings.Contains(activeVersion, version) {
-			fmt.Printf("WARNING: Active DDN CLI reports version %s, expected %s\n", 
-					   activeVersion, version)
+			fmt.Printf("WARNING: Active DDN CLI reports version %s, expected %s\n",
+				activeVersion, version)
 		} else {
 			fmt.Printf("Verified: Active DDN CLI is now version %s\n", version)
 		}
@@ -361,7 +361,7 @@ var installVersion = func(version string) error {
 
 func installVersionImpl(version string) error {
 	fmt.Printf("DEBUG: Starting installVersion for %s\n", version)
-	
+
 	if err := ensureInstallDir(); err != nil {
 		return err
 	}
@@ -381,10 +381,10 @@ func installVersionImpl(version string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	versionDir := filepath.Join(installPath, version)
 	fmt.Printf("DEBUG: Version directory: %s\n", versionDir)
-	
+
 	if _, err := os.Stat(versionDir); err == nil {
 		fmt.Printf("DEBUG: Removing existing version directory\n")
 		if err := os.RemoveAll(versionDir); err != nil {
@@ -392,7 +392,7 @@ func installVersionImpl(version string) error {
 			return fmt.Errorf("failed to clean up existing installation: %w", err)
 		}
 	}
-	
+
 	fmt.Printf("DEBUG: Creating version directory\n")
 	if err := os.MkdirAll(versionDir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory for version %s: %w", version, err)
@@ -423,14 +423,14 @@ func installVersionImpl(version string) error {
 		fmt.Printf("DEBUG: Command output: %s\n", string(output))
 		return fmt.Errorf("failed to verify downloaded binary: %w", err)
 	}
-	
+
 	installedVersion := strings.TrimSpace(string(output))
 	fmt.Printf("DEBUG: Binary reports version: %s\n", installedVersion)
-	
+
 	if !strings.Contains(installedVersion, version) {
 		fmt.Printf("DEBUG: Version mismatch! Expected %s, got %s\n", version, installedVersion)
-		return fmt.Errorf("downloaded binary reports version %s, expected %s", 
-						 installedVersion, version)
+		return fmt.Errorf("downloaded binary reports version %s, expected %s",
+			installedVersion, version)
 	}
 
 	fmt.Printf("Successfully installed DDN CLI %s\n", version)
@@ -486,12 +486,12 @@ func downloadBinaryImpl(url, destPath string) error {
 
 func createSymlink(targetPath string) error {
 	fmt.Printf("DEBUG: Creating symlink to %s\n", targetPath)
-	
+
 	symlinkPath, err := getSymlinkPath()
 	if err != nil {
 		return err
 	}
-	
+
 	fmt.Printf("DEBUG: Symlink path: %s\n", symlinkPath)
 
 	// Remove existing symlink if it exists
@@ -673,6 +673,6 @@ found:
 	if runtime.GOOS == "windows" {
 		symlinkPath += ".exe"
 	}
-	
+
 	return symlinkPath, nil
 }

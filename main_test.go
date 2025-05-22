@@ -397,20 +397,20 @@ func TestInstallVersion(t *testing.T) {
 	downloadBinaryCalled := false
 	downloadBinary = func(url, destPath string) error {
 		downloadBinaryCalled = true
-		
+
 		// Create a mock binary that returns the correct version
 		testVersion := "v2.28.0"
 		mockBinaryContent := "#!/bin/sh\necho \"DDN CLI Version: " + testVersion + "\"\n"
 		if runtime.GOOS == "windows" {
 			mockBinaryContent = "@echo off\necho DDN CLI Version: " + testVersion
 		}
-		
+
 		// Create the directory if it doesn't exist
 		dir := filepath.Dir(destPath)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err
 		}
-		
+
 		return os.WriteFile(destPath, []byte(mockBinaryContent), 0755)
 	}
 
@@ -523,4 +523,3 @@ func TestCreateSymlink(t *testing.T) {
 		}
 	}
 }
-
