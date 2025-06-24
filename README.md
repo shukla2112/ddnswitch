@@ -2,6 +2,8 @@
 
 A command-line utility to easily switch between different versions of the Hasura DDN CLI, similar to `tfswitch` for Terraform.
 
+Deepwiki docs link - https://deepwiki.com/shukla2112/ddnswitch/2.1-version-management-engine
+
 ## Features
 
 - 🔄 **Easy Version Switching**: Switch between DDN CLI versions with a simple command
