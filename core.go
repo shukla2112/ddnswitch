@@ -21,7 +21,7 @@ import (
 
 const (
 	//githubAPIURL = "https://api.github.com/repos/hasura/ddn/releases"
-	releasesURL = "https://gist.githubusercontent.com/shukla2112/7cab141a3eafab4d4565d7347eec9029/raw/bf04120a4cc99ed239dddcef7ff1d7aee82c69fd/releases.json"
+	releasesURL = "https://gist.githubusercontent.com/shukla2112/7cab141a3eafab4d4565d7347eec9029/raw/d49a91cc321133ccac15f17ad09f749d6bec37c3/releases.json"
 	installDir  = ".ddnswitch"
 	binName     = "ddn"
 )
